@@ -39,25 +39,28 @@ class Application(Thread):
 
         # 尺寸大約60px
         size_list = [
-            60,
-            90,
-            60,
-            60,
+            (60 * rate_x, 60 * rate_y),
+            (60 * rate_x, 60 * rate_y),
+            (90 * rate_x, 90 * rate_y),
+            (60 * rate_x, 60 * rate_y),
+            (60 * rate_x, 60 * rate_y),
         ]
         left_position_list = [
-            (60, 60),
-            (576 - size_list[1], 60),
-            (576 - size_list[2], 40),
-            (576 - size_list[3], 80),
+            (0 + self.range_x1, 0 + self.range_y1),
+            (60 + self.range_x1, 60 + self.range_y1),
+            (self.range_x2 - size_list[1][0] + self.range_x1, 60 + self.range_y1),
+            (self.range_x2 - size_list[2][0] + self.range_x1, 40 + self.range_y1),
+            (self.range_x2 - size_list[3][0] + self.range_x1, 80 + self.range_y1),
         ]
         
         # 填入辨識範圍清單
         self.position_list = []
         for left in left_position_list:
-            right = (left[0]+size_list[0], left[1]+size_list[1])
-            fix_left = (left[0] * rate_x, left[1] * rate_y)
-            fix_right = (right[0] * rate_x, right[1] * rate_y)
-            self.position_list.append([fix_left, fix_right])
+            right = (left[0]+size_list[0][0], left[1]+size_list[1][1])
+            # fix_left = (left[0] * rate_x, left[1] * rate_y)
+            # fix_right = (right[0] * rate_x, right[1] * rate_y)
+            # self.position_list.append([fix_left, fix_right])
+            self.position_list.append([left, right])
 
     def cross_detect(self):
         # 搜尋所有可能的區域
@@ -65,7 +68,6 @@ class Application(Thread):
             # 擷取區域
             image = ImageGrab.grab(bbox = (p[0][0], p[0][1], p[1][0], p[1][1]))
             # image = self.img.crop((p[0][0], p[0][1], p[1][0], p[1][1]))
-            # image.show()
 
             # resize to 224, 224
             size = (224, 224)
