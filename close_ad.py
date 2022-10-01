@@ -4,11 +4,9 @@ from queue import Queue
 from threading import Thread
 from time import sleep
 from keras.models import load_model
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageGrab
 import cv2
 import numpy as np
-
-
 
 class Application(Thread):
     range_x1:int
@@ -25,10 +23,19 @@ class Application(Thread):
 
     def keras_init(self):
         # Load the model
-        self.model = load_model('x.h5')
+        self.model = load_model('x2.h5')
+        self.data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+        # 預處理
+        self.model.predict(self.data)
+            
+    def fix_range(self):
+        # 原本是用576*1280去做辨識的，所以要依選取範圍調整大小
+        size_x = abs(self.range_x1 - self.range_x2)
+        size_y = abs(self.range_y1 - self.range_y2)
 
-        # 576*1280
-        self.img = Image.open('../image_ad/1.jpg')
+        # 尺寸修正
+        rate_x = size_x / 576
+        rate_y = size_y / 1280
 
         # 尺寸大約60px
         size_list = [
@@ -37,25 +44,28 @@ class Application(Thread):
             60,
             60,
         ]
-        x_position_list = [
+        left_position_list = [
             (60, 60),
-            (self.img.width - size_list[1], 60),
-            (self.img.width - size_list[2], 40),
-            (self.img.width - size_list[3], 80),
+            (576 - size_list[1], 60),
+            (576 - size_list[2], 40),
+            (576 - size_list[3], 80),
         ]
         
+        # 填入辨識範圍清單
         self.position_list = []
-        for x in x_position_list:
-            y = (x[0]+size_list[0], x[1]+size_list[1])
-            self.position_list.append([x, y])
-
-        self.data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+        for left in left_position_list:
+            right = (left[0]+size_list[0], left[1]+size_list[1])
+            fix_left = (left[0] * rate_x, left[1] * rate_y)
+            fix_right = (right[0] * rate_x, right[1] * rate_y)
+            self.position_list.append([fix_left, fix_right])
 
     def cross_detect(self):
         # 搜尋所有可能的區域
         for p in self.position_list:
             # 擷取區域
-            image = self.img.crop((p[0][0], p[0][1], p[1][0], p[1][1]))
+            image = ImageGrab.grab(bbox = (p[0][0], p[0][1], p[1][0], p[1][1]))
+            # image = self.img.crop((p[0][0], p[0][1], p[1][0], p[1][1]))
+            # image.show()
 
             # resize to 224, 224
             size = (224, 224)
@@ -70,11 +80,13 @@ class Application(Thread):
             prediction = self.model.predict(self.data)
             print(prediction)
 
-            x, not_x, skip = prediction[0]
+            x, not_x, skip, background = prediction[0]
             if x > 0.8:
                 print("x!")
             elif skip > 0.8:
                 print("skip!")
+            else:
+                print('not x')
 
     def run(self):
         while True:
@@ -86,12 +98,16 @@ class Application(Thread):
                 msg = self.q_cont_rsp.get(True, 0.5)
                 self.handle_cont_msg(msg)
 
-            sleep(1)
+            sleep(0.1)
 
     def handle_gui_msg(self, msg):
-        global cont
+        global gui, cont
         if msg == 'set_range':
             cont.game_listen()
+        
+        elif msg == 'cross_detect':
+            self.cross_detect()
+            gui.cross_detect_finish()
 
     def handle_cont_msg(self, msg):
         global gui, cont
@@ -103,17 +119,18 @@ class Application(Thread):
                 elif msg[1] == 2:
                     self.range_x2, self.range_y2 = msg[2], msg[3]
                     cont.game_listen_stop()
+                    self.fix_range()
                     gui.set_range_result(self.range_x1, self.range_y1, self.range_x2, self.range_y2)
 
 if __name__ == '__main__':
-    gui_rsp = Queue()
-    cont_rsp = Queue()
+    q_gui_rsp = Queue()
+    q_cont_rsp = Queue()
 
-    app = Application(gui_rsp, cont_rsp)
+    app = Application(q_gui_rsp, q_cont_rsp)
 
-    cont = Game_Controller(cont_rsp)
+    cont = Game_Controller(q_cont_rsp)
 
     app.start()
 
-    gui = GUI_Handler(gui_rsp)
+    gui = GUI_Handler(q_gui_rsp)
     gui.window.mainloop()
