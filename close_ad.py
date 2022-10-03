@@ -14,6 +14,10 @@ class Application(Thread):
     range_x2:int
     range_y2:int
 
+    # 對螢幕的尺寸修正
+    window_rate_x = 1920 / 1920
+    window_rate_y = 1080 / 1080
+
     def __init__(self, gui_rsp, cont_rsp) -> None:
         Thread.__init__(self)
         self.q_gui_rsp = gui_rsp
@@ -45,29 +49,32 @@ class Application(Thread):
             (60 * rate_x, 60 * rate_y),
             (60 * rate_x, 60 * rate_y),
         ]
+        
+        # 擷取圖片叉叉的左上位置
+        # 使用range1代表以左上為準，使用range2代表以右下為準
         left_position_list = [
             (0 + self.range_x1, 0 + self.range_y1),
             (60 + self.range_x1, 60 + self.range_y1),
-            (self.range_x2 - size_list[1][0] + self.range_x1, 60 + self.range_y1),
-            (self.range_x2 - size_list[2][0] + self.range_x1, 40 + self.range_y1),
-            (self.range_x2 - size_list[3][0] + self.range_x1, 80 + self.range_y1),
+            (self.range_x2 - size_list[2][0], 60 + self.range_y1),
+            (self.range_x2 - size_list[3][0], 40 + self.range_y1),
+            (self.range_x2 - size_list[4][0], 80 + self.range_y1),
         ]
-        
+
         # 填入辨識範圍清單
         self.position_list = []
         for left in left_position_list:
+            # 擷取圖片叉叉的右下位置
             right = (left[0]+size_list[0][0], left[1]+size_list[1][1])
-            # fix_left = (left[0] * rate_x, left[1] * rate_y)
-            # fix_right = (right[0] * rate_x, right[1] * rate_y)
-            # self.position_list.append([fix_left, fix_right])
             self.position_list.append([left, right])
 
     def cross_detect(self):
         # 搜尋所有可能的區域
+        result = None
         for p in self.position_list:
             # 擷取區域
             image = ImageGrab.grab(bbox = (p[0][0], p[0][1], p[1][0], p[1][1]))
             # image = self.img.crop((p[0][0], p[0][1], p[1][0], p[1][1]))
+            # image.show()
 
             # resize to 224, 224
             size = (224, 224)
@@ -80,15 +87,24 @@ class Application(Thread):
 
             # 進行辨識
             prediction = self.model.predict(self.data)
-            print(prediction)
+            # print(prediction)
 
             x, not_x, skip, background = prediction[0]
+            if not_x > 0.8:
+                continue
             if x > 0.8:
-                print("x!")
+                result_x = (p[0][0] + p[1][0]) / 2
+                result_y = (p[0][1] + p[1][1]) / 2
+                result = [result_x, result_y]
+                break
             elif skip > 0.8:
-                print("skip!")
+                result_x = (p[0][0] + p[1][0]) / 2
+                result_y = (p[0][1] + p[1][1]) / 2
+                result = [result_x, result_y]
+                break
             else:
-                print('not x')
+                continue
+        return result
 
     def run(self):
         while True:
@@ -108,7 +124,9 @@ class Application(Thread):
             cont.game_listen()
         
         elif msg == 'cross_detect':
-            self.cross_detect()
+            position = self.cross_detect()
+            if position != None:
+                cont.mouse_click(position[0] * self.window_rate_x, position[1] * self.window_rate_y)
             gui.cross_detect_finish()
 
     def handle_cont_msg(self, msg):
